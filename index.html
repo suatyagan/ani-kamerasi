@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anı Kamerası · Kodu Etkinleştir</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="brandmark"><span data-brand-logo><span class="dot"></span></span><span data-brand-name>Anı Kamerası</span></div>
+    <span class="small muted" data-brand-tagline>Anı Kamerası</span>
+  </div>
+  <main>
+    <!-- 1: kod -->
+    <section id="step-code">
+      <div class="hero">
+        <div class="eyebrow">Misafirleriniz fotoğrafçınız olsun</div>
+        <h1 class="serif">Anı Kameranızı <i>etkinleştirin</i></h1>
+        <div class="meta">Kartınızdaki ya da size iletilen kodu yazın.</div>
+      </div>
+      <form class="card" id="codeForm">
+        <label class="field" for="code" style="margin-top:0">Aktivasyon kodu</label>
+        <input class="input mono" id="code" placeholder="YGN-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="16" required style="text-transform:uppercase;letter-spacing:.06em">
+        <div class="err" id="codeErr"></div>
+        <button class="btn primary" style="margin-top:16px" type="submit" id="codeBtn">Devam →</button>
+      </form>
+      <div class="note">Kodunuz yok mu? Düğün salonunuza ya da organizasyon firmanıza sorun.</div>
+    </section>
+
+    <!-- 2: etkinlik bilgileri -->
+    <section id="step-form" class="hidden">
+      <div class="hero" style="padding-bottom:10px">
+        <div class="eyebrow">Kod geçerli · <span id="pkgName"></span> paket</div>
+        <h1 class="serif" style="font-size:36px">Etkinliğinizi anlatın</h1>
+      </div>
+      <form class="card" id="eventForm">
+        <div class="grid2">
+          <div><label class="field" style="margin-top:0">1. isim</label><input class="input" name="a" required maxlength="40" placeholder="Ayşe"></div>
+          <div><label class="field" style="margin-top:0">2. isim <span class="muted">(isteğe bağlı)</span></label><input class="input" name="b" maxlength="40" placeholder="Mehmet"></div>
+        </div>
+        <div class="grid2">
+          <div><label class="field">Etkinlik</label>
+            <select class="input" name="type"><option>Düğün</option><option>Nişan</option><option>Kına</option><option>Söz</option><option>Doğum günü</option><option>Mezuniyet</option><option>Kurumsal</option><option>Diğer</option></select></div>
+          <div><label class="field">Tarih</label><input class="input" name="date" type="date" required></div>
+        </div>
+        <label class="field">Mekan <span class="muted">(isteğe bağlı)</span></label>
+        <input class="input" name="venue" maxlength="60" placeholder="Gül Bahçesi Davet Salonu">
+        <label class="field">Fotoğraflar ne zaman görünsün?</label>
+        <select class="input" name="reveal">
+          <option value="0">Hemen — çekildikçe albüme düşsün</option>
+          <option value="1">Ertesi sabah 10:00 — tek kullanımlık makine gibi sürpriz</option>
+        </select>
+        <label class="field">E-posta <span class="muted">(albüm linkinizi kaybederseniz diye)</span></label>
+        <input class="input" name="email" type="email" maxlength="80" placeholder="ornek@eposta.com">
+        <label class="check"><input type="checkbox" name="kvkk" required> <span>Hizmet koşullarını ve <a href="kvkk.html" target="_blank">KVKK aydınlatma metnini</a> okudum. Misafirlerin yüklediği fotoğrafların paket süresi sonunda silineceğini biliyorum.</span></label>
+        <button class="btn primary" type="submit" id="eventBtn">Etkinliği oluştur</button>
+        <div class="err" id="eventErr"></div>
+      </form>
+      <button class="btn ghost" style="margin-top:12px" id="backBtn">← Kodu değiştir</button>
+    </section>
+
+    <!-- 3: hazır -->
+    <section id="step-done" class="hidden">
+      <div class="hero" style="padding-bottom:10px">
+        <div class="eyebrow">Hazırsınız 🎉</div>
+        <h1 class="serif" id="doneCouple"></h1>
+        <div class="meta" id="doneMeta"></div>
+      </div>
+      <div class="card stack">
+        <b>Misafir linki</b>
+        <div class="small muted">Bu QR kodu masalara koyun ya da linki davetlilere gönderin.</div>
+        <div class="qrbox" id="doneQr"></div>
+        <div class="linkbox"><code id="guestLink"></code><button class="btn dark sm" data-copy="guestLink">Kopyala</button></div>
+        <a class="btn primary" id="cardBtn" target="_blank">🖨️ Masa kartını yazdır</a>
+      </div>
+      <div class="card stack" style="margin-top:12px;border-color:var(--accent)">
+        <b>🔑 Size özel albüm linki</b>
+        <div class="small muted">Tüm fotoğrafları bu linkten görür ve indirirsiniz. <b>Bu linki kaydedin ve misafirlerle paylaşmayın.</b></div>
+        <div class="linkbox"><code id="albumLink"></code><button class="btn dark sm" data-copy="albumLink">Kopyala</button></div>
+        <a class="btn ghost" id="albumBtn">Albümü aç</a>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+(async function () {
+  const { $, rpc, esc } = App;
+  let checked = null;
+
+  const prefill = App.qs("kod");
+  if (prefill) $("#code").value = prefill.toUpperCase();
+  App.loadSiteBrand();
+
+  $("#code").addEventListener("input", (e) => {
+    // YGN-ABCD-EFGH biçimine getir
+    const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const p = raw.slice(0, raw.length > 8 ? raw.length - 8 : 3);
+    const rest = raw.slice(p.length);
+    e.target.value = [p, rest.slice(0, 4), rest.slice(4, 8)].filter(Boolean).join("-");
+  });
+
+  $("#codeForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#codeErr"), "");
+    $("#codeBtn").disabled = true;
+    try {
+      checked = await rpc("ak_check_code", { p_code: $("#code").value });
+      App.applyBrand(checked.brand);
+      $("#pkgName").textContent = checked.package.name;
+      const f = $("#eventForm");
+      if (!f.date.value) f.date.value = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+      $("#step-code").classList.add("hidden"); $("#step-form").classList.remove("hidden"); window.scrollTo(0, 0);
+    } catch (err) { App.showError($("#codeErr"), err.message); }
+    $("#codeBtn").disabled = false;
+  };
+  $("#backBtn").onclick = () => { $("#step-form").classList.add("hidden"); $("#step-code").classList.remove("hidden"); };
+
+  $("#eventForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#eventErr"), "");
+    const f = e.target; $("#eventBtn").disabled = true;
+    try {
+      const r = await rpc("ak_activate_code", {
+        p_code: checked.code, p_name_a: f.a.value, p_name_b: f.b.value, p_event_type: f.type.value,
+        p_event_date: f.date.value, p_venue: f.venue.value, p_email: f.email.value,
+        p_reveal_next_morning: f.reveal.value === "1",
+      });
+      const ev = r.event;
+      const guest = App.guestLink(r.slug), album = App.albumLink(r.slug, r.album_key);
+      const saved = App.storage.get("myAlbums") || []; saved.unshift({ slug: r.slug, key: r.album_key, name: App.couple(ev), date: ev.event_date });
+      App.storage.set("myAlbums", saved.slice(0, 20));
+      $("#doneCouple").textContent = App.couple(ev);
+      $("#doneMeta").textContent = ev.event_type + " · " + App.fmtDate(ev.event_date);
+      $("#doneQr").innerHTML = App.qrSvg(guest);
+      $("#guestLink").textContent = guest; $("#albumLink").textContent = album;
+      $("#cardBtn").href = App.cardLink(r.slug); $("#albumBtn").href = album;
+      $("#step-form").classList.add("hidden"); $("#step-done").classList.remove("hidden"); window.scrollTo(0, 0);
+    } catch (err) { App.showError($("#eventErr"), err.message); }
+    $("#eventBtn").disabled = false;
+  };
+
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-copy]"); if (b) App.copy($("#" + b.dataset.copy).textContent);
+  });
+})();
+</script>
+</body>
+</html>

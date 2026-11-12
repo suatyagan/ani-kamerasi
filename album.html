@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Albüm</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<div class="app" style="max-width:820px">
+  <div class="topbar">
+    <div class="brandmark"><span data-brand-logo><span class="dot"></span></span><span data-brand-name></span></div>
+    <span class="pill" id="statusPill"></span>
+  </div>
+  <main>
+    <div class="spinner" id="loading"></div>
+    <div class="card center hidden" id="fatal"></div>
+    <section id="content" class="hidden">
+      <div style="margin:4px 0 14px">
+        <div class="small muted">Ortak albüm</div>
+        <h1 class="serif" style="font-size:40px;line-height:1.05" id="couple"></h1>
+        <div class="small muted" id="meta"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="sPhotos">0</b><span>fotoğraf</span></div>
+        <div class="stat"><b id="sGuests">0</b><span>misafir</span></div>
+        <div class="stat"><b id="sExp" style="font-size:15px;padding-top:5px">–</b><span>silinme tarihi</span></div>
+      </div>
+      <div class="lockbar hidden" id="lockbar">
+        🎞️ Fotoğraflar tek kullanımlık makine gibi <b id="revealAt"></b> tarihinde açılacak.
+        <div class="count" id="countdown"></div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="gallery" id="gallery"></div>
+      <div class="card center muted hidden" id="empty" style="margin-top:6px">Henüz fotoğraf yok. Misafir linkini paylaşın, kareler buraya düşecek.</div>
+
+      <div class="actions" style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn dark" id="zipBtn">⬇ Tümünü indir (ZIP)</button>
+        <button class="btn ghost" id="liveBtn">📺 Canlı ekran</button>
+      </div>
+      <div class="err" id="zipErr"></div>
+
+      <div class="section-title">Misafir linki</div>
+      <div class="card stack">
+        <div class="qrbox" id="qr"></div>
+        <div class="linkbox"><code id="guestLink"></code><button class="btn dark sm" id="copyGuest">Kopyala</button></div>
+        <a class="btn ghost" id="cardBtn" target="_blank">🖨️ Masa kartı</a>
+        <button class="btn ghost" id="acceptBtn"></button>
+      </div>
+      <div class="note">Bu sayfanın linki size özeldir. Silinme tarihinden önce fotoğraflarınızı indirmeyi unutmayın.</div>
+    </section>
+  </main>
+</div>
+
+<div class="viewer" id="viewer">
+  <div class="bar">
+    <span id="vCap"></span>
+    <span class="actions">
+      <button id="vPrev">‹</button><button id="vNext">›</button>
+      <button id="vDl">İndir</button><button id="vHide">Gizle</button><button id="vClose">Kapat</button>
+    </span>
+  </div>
+  <img id="vImg" alt="">
+  <div class="live-cap hidden" id="liveCap"><div class="serif" id="liveCouple"></div></div>
+  <div class="live-qr hidden" id="liveQr"></div>
+</div>
+
+<script>
+(async function () {
+  const { $, $$, rpc, esc } = App;
+  const slug = App.qs("s"), key = App.qs("k");
+  let data = null, filter = "Tümü", list = [], idx = 0, live = null, poll = null;
+
+  function fatal(m) { $("#loading").classList.add("hidden"); $("#fatal").textContent = m; $("#fatal").classList.remove("hidden"); }
+  if (!slug || !key) return fatal("Albüm bağlantısı eksik.");
+
+  async function load() {
+    data = await rpc("ak_album", { p_slug: slug, p_key: key });
+    render();
+  }
+  try { await load(); } catch (e) { return fatal(e.message); }
+  $("#loading").classList.add("hidden"); $("#content").classList.remove("hidden");
+
+  const guest = App.guestLink(slug);
+  $("#guestLink").textContent = guest; $("#qr").innerHTML = App.qrSvg(guest);
+  $("#copyGuest").onclick = () => App.copy(guest);
+  $("#cardBtn").href = App.cardLink(slug);
+
+  function render() {
+    const ev = data.event;
+    App.applyBrand(ev.brand);
+    $("#couple").textContent = App.couple(ev);
+    $("#meta").textContent = ev.event_type + " · " + App.fmtDate(ev.event_date) + (ev.venue ? " · " + ev.venue : "");
+    $("#sPhotos").textContent = data.photo_count; $("#sGuests").textContent = data.guest_count;
+    $("#sExp").textContent = App.fmtDate(ev.expires_at);
+    $("#statusPill").textContent = ev.accepting ? "Fotoğraf kabul ediyor" : "Yükleme kapalı";
+    $("#statusPill").className = "pill " + (ev.accepting ? "ok" : "off");
+    $("#acceptBtn").textContent = ev.status === "active" ? "⏸ Fotoğraf yüklemeyi kapat" : "▶ Fotoğraf yüklemeyi aç";
+    $("#lockbar").classList.toggle("hidden", ev.revealed);
+    if (!ev.revealed) { $("#revealAt").textContent = App.fmtDateTime(ev.reveal_at); tick(); }
+
+    const photos = data.photos;
+    const counts = {}; photos.forEach((p) => (counts[p.guest] = (counts[p.guest] || 0) + 1));
+    const names = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    if (filter !== "Tümü" && !counts[filter]) filter = "Tümü";
+    $("#chips").innerHTML = photos.length ? ["Tümü", ...names].map((n) => `<button class="chip${n === filter ? " on" : ""}" data-n="${esc(n)}">${esc(n)}${n !== "Tümü" ? " · " + counts[n] : ""}</button>`).join("") : "";
+    list = filter === "Tümü" ? photos : photos.filter((p) => p.guest === filter);
+    $("#gallery").innerHTML = list.map((p, i) => `<div class="tile" data-i="${i}"><img src="${App.photoUrl(p.path)}" alt="" loading="lazy"><span class="who">${esc(p.guest)}</span></div>`).join("");
+    $("#empty").classList.toggle("hidden", !ev.revealed || photos.length > 0);
+  }
+  function tick() {
+    const ms = new Date(data.event.reveal_at) - Date.now();
+    if (ms <= 0) { load(); return; }
+    const h = Math.floor(ms / 36e5), m = Math.floor((ms % 36e5) / 6e4), s = Math.floor((ms % 6e4) / 1e3);
+    $("#countdown").textContent = `${h} sa ${String(m).padStart(2, "0")} dk ${String(s).padStart(2, "0")} sn`;
+    clearTimeout(tick.t); tick.t = setTimeout(tick, 1000);
+  }
+
+  $("#chips").onclick = (e) => { const c = e.target.closest(".chip"); if (c) { filter = c.dataset.n; render(); } };
+  $("#gallery").onclick = (e) => { const t = e.target.closest(".tile"); if (t) openViewer(+t.dataset.i); };
+
+  // Görüntüleyici
+  function openViewer(i) { stopLive(); idx = i; showPhoto(); $("#viewer").classList.add("on"); }
+  function showPhoto() { const p = list[idx]; if (!p) return; $("#vImg").src = App.photoUrl(p.path); $("#vCap").textContent = "📸 " + p.guest + "  ·  " + (idx + 1) + "/" + list.length; }
+  $("#vPrev").onclick = () => { idx = (idx - 1 + list.length) % list.length; showPhoto(); };
+  $("#vNext").onclick = () => { idx = (idx + 1) % list.length; showPhoto(); };
+  $("#vClose").onclick = () => { stopLive(); $("#viewer").classList.remove("on"); };
+  document.addEventListener("keydown", (e) => {
+    if (!$("#viewer").classList.contains("on") || live) return;
+    if (e.key === "ArrowLeft") $("#vPrev").click(); if (e.key === "ArrowRight") $("#vNext").click(); if (e.key === "Escape") $("#vClose").click();
+  });
+  $("#vDl").onclick = async () => {
+    const p = list[idx]; try { const b = await (await fetch(App.photoUrl(p.path))).blob(); saveBlob(b, fileName(p, idx)); } catch (e) { App.toast("İndirilemedi"); }
+  };
+  $("#vHide").onclick = async () => {
+    const p = list[idx]; if (!confirm("Bu fotoğraf albümden gizlensin mi?")) return;
+    try { await rpc("ak_album_hide_photo", { p_slug: slug, p_key: key, p_photo_id: p.id }); $("#vClose").click(); await load(); App.toast("Fotoğraf gizlendi"); } catch (e) { App.toast(e.message); }
+  };
+  $("#acceptBtn").onclick = async () => {
+    const open = data.event.status !== "active";
+    try { await rpc("ak_album_set_accepting", { p_slug: slug, p_key: key, p_open: open }); await load(); App.toast(open ? "Yükleme açıldı" : "Yükleme kapatıldı"); } catch (e) { App.toast(e.message); }
+  };
+
+  // Canlı ekran: salondaki TV/projeksiyon için otomatik slayt
+  $("#liveBtn").onclick = () => {
+    if (!data.event.live_screen) return App.toast("Canlı ekran Premium pakette var.");
+    if (!data.event.revealed) return App.toast("Fotoğraflar henüz açılmadı.");
+    if (!data.photos.length) return App.toast("Henüz fotoğraf yok.");
+    list = data.photos; idx = 0; live = true;
+    $("#liveCouple").textContent = App.couple(data.event); $("#liveCap").classList.remove("hidden");
+    $("#liveQr").innerHTML = App.qrSvg(guest) + "Siz de çekin!"; $("#liveQr").classList.remove("hidden");
+    $$("#viewer .bar .actions button").forEach((b) => b.classList.toggle("hidden", b.id !== "vClose"));
+    showPhoto(); $("#viewer").classList.add("on");
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); } catch (e) {}
+    live = setInterval(() => { idx = (idx + 1) % list.length; showPhoto(); }, 5000);
+    poll = setInterval(async () => { try { const before = data.photos.length; await load(); list = data.photos; if (data.photos.length > before) idx = 0; } catch (e) {} }, 20000);
+  };
+  function stopLive() {
+    if (live) { clearInterval(live); clearInterval(poll); live = null; poll = null; render();
+      $("#liveCap").classList.add("hidden"); $("#liveQr").classList.add("hidden");
+      $$("#viewer .bar .actions button").forEach((b) => b.classList.remove("hidden"));
+      try { document.fullscreenElement && document.exitFullscreen(); } catch (e) {} }
+  }
+
+  // ZIP indirme (büyük albümler 150'lik parçalara bölünür)
+  const fileName = (p, i) => String(i + 1).padStart(4, "0") + "_" + App.slugify(p.guest) + ".jpg";
+  App.slugify = (s) => String(s).toLocaleLowerCase("tr").replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "misafir";
+  function saveBlob(b, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+  $("#zipBtn").onclick = async () => {
+    App.showError($("#zipErr"), "");
+    if (!data.event.revealed) return App.toast("Fotoğraflar henüz açılmadı.");
+    const all = data.photos; if (!all.length) return App.toast("Henüz fotoğraf yok.");
+    if (!window.JSZip) return App.showError($("#zipErr"), "ZIP aracı yüklenemedi, sayfayı yenileyin.");
+    const btn = $("#zipBtn"); btn.disabled = true;
+    const size = 150, parts = Math.ceil(all.length / size), base = App.slugify(App.couple(data.event));
+    try {
+      for (let part = 0; part < parts; part++) {
+        const zip = new JSZip(); const chunk = all.slice(part * size, (part + 1) * size);
+        for (let j = 0; j < chunk.length; j++) {
+          const i = part * size + j;
+          btn.textContent = `Hazırlanıyor ${i + 1}/${all.length}…`;
+          const r = await fetch(App.photoUrl(chunk[j].path)); if (!r.ok) continue;
+          zip.file(fileName(chunk[j], i), await r.blob());
+        }
+        btn.textContent = "Sıkıştırılıyor…";
+        const blob = await zip.generateAsync({ type: "blob" });
+        saveBlob(blob, base + (parts > 1 ? `_parca${part + 1}` : "") + ".zip");
+      }
+    } catch (e) { App.showError($("#zipErr"), "İndirme yarıda kaldı: " + e.message); }
+    btn.disabled = false; btn.textContent = "⬇ Tümünü indir (ZIP)";
+  };
+})();
+</script>
+</body>
+</html>

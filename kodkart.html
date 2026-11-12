@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Kod Kartları</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<style>
+  body{background:#e9e1d4}
+  .wrap{max-width:900px;margin:0 auto;padding:24px}
+  .toolbar{display:flex;gap:10px;justify-content:center;margin-bottom:20px}
+  .sheet{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .kc{background:#fff;border-radius:14px;padding:18px;display:grid;grid-template-columns:1fr 96px;gap:12px;align-items:center;border:1px solid var(--line);border-left:8px solid var(--accent);break-inside:avoid}
+  .kc .b{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .kc .h{font-size:24px;line-height:1.1;margin:4px 0 8px}
+  .kc .c{font-family:"DM Mono",monospace;font-size:17px;letter-spacing:.06em;background:#f6f0e6;border-radius:8px;padding:6px 8px;display:inline-block}
+  .kc .s{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.4}
+  .kc svg{width:96px;height:96px}
+  @media print{body{background:#fff}.toolbar,.setup-warning{display:none!important}.wrap{padding:0;max-width:none}.kc{border-radius:0;border:1px dashed #bbb;border-left:8px solid var(--accent)}@page{size:A4;margin:10mm}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="toolbar"><button class="btn primary sm" onclick="window.print()">🖨️ Yazdır / PDF kaydet</button></div>
+  <div class="sheet" id="sheet"></div>
+</div>
+<script>
+(async function () {
+  const { $, esc } = App;
+  const codes = App.storage.get("printCodes") || [];
+  if (!codes.length) { $("#sheet").textContent = "Yazdırılacak kod yok. Panelden kod üretip “Kod kartlarını yazdır”a basın."; return; }
+  let brand = { name: "Anı Kamerası" };
+  try { brand = await App.rpc("ak_public_brand", { p_host: null, p_prefix: codes[0].split("-")[0] }); App.applyBrand(brand); } catch (e) {}
+  const site = App.base();
+  $("#sheet").innerHTML = codes.map((c) => `<div class="kc"><div>
+      <div class="b">${esc(brand.name)} · ${esc(brand.tagline || "Anı Kamerası")}</div>
+      <div class="h serif">Misafirleriniz fotoğrafçınız olsun</div>
+      <div class="c">${esc(c)}</div>
+      <div class="s">QR'ı okutun ya da ${esc(site.replace(/^https?:\/\//, ""))} adresine girip kodu yazın.</div>
+    </div>${App.qrSvg(site + "?kod=" + encodeURIComponent(c))}</div>`).join("");
+})();
+</script>
+</body>
+</html>

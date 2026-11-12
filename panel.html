@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yönetim Paneli</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+</head>
+<body>
+<div class="app wide">
+  <div class="topbar">
+    <div class="brandmark"><span data-brand-logo><span class="dot"></span></span><span data-brand-name>Anı Kamerası</span> <span class="muted" style="font-weight:400">· Panel</span></div>
+    <div class="actions" style="align-items:center"><span class="small muted" id="who"></span><button class="btn ghost sm hidden" id="logout">Çıkış</button></div>
+  </div>
+
+  <!-- Giriş -->
+  <main id="login" class="hidden">
+    <form class="card" id="loginForm" style="max-width:380px;margin:40px auto">
+      <h1 class="serif" style="font-size:32px;margin-bottom:6px">Panele giriş</h1>
+      <label class="field">E-posta</label><input class="input" name="email" type="email" required autocomplete="username">
+      <label class="field">Şifre</label><input class="input" name="password" type="password" required autocomplete="current-password">
+      <button class="btn primary" style="margin-top:16px" type="submit">Giriş yap</button>
+      <div class="err" id="loginErr"></div>
+    </form>
+  </main>
+
+  <div id="shell" class="hidden">
+    <nav class="tabs" id="tabs"></nav>
+    <main>
+      <!-- ÖZET -->
+      <section data-tab="ozet">
+        <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+          <div class="stat"><b id="kEvents">–</b><span>etkinlik</span></div>
+          <div class="stat"><b id="kPhotos">–</b><span>fotoğraf</span></div>
+          <div class="stat"><b id="kNew">–</b><span>kullanılmamış kod</span></div>
+          <div class="stat"><b id="kUsed">–</b><span>kullanılmış kod</span></div>
+        </div>
+        <div class="section-title">Yaklaşan ve son etkinlikler</div>
+        <div class="tablewrap"><table class="list" id="recent"></table></div>
+      </section>
+
+      <!-- KODLAR -->
+      <section data-tab="kodlar" class="hidden">
+        <div id="genBox">
+          <div class="section-title" style="margin-top:0">Kod üret</div>
+          <form class="card formgrid" id="genForm">
+            <div><label class="field">Marka</label><select class="input" name="brand" required></select></div>
+            <div><label class="field">Paket</label><select class="input" name="package" required></select></div>
+            <div><label class="field">Firma (isteğe bağlı)</label><select class="input" name="firm"></select></div>
+            <div><label class="field">Adet</label><input class="input" name="count" type="number" min="1" max="500" value="10" required></div>
+            <div><label class="field">Geçerlilik (gün)</label><input class="input" name="days" type="number" min="1" max="3650" value="365" required></div>
+            <div><label class="field">Parti adı</label><input class="input" name="batch" maxlength="40" placeholder="Kasım 2026 · Gül Bahçesi"></div>
+            <div><button class="btn primary" type="submit">Üret</button></div>
+          </form>
+          <div class="err" id="genErr"></div>
+          <div class="card hidden stack" id="genOut" style="margin-top:12px">
+            <b id="genTitle"></b>
+            <div class="codes-out" id="genCodes"></div>
+            <div class="actions">
+              <button class="btn dark sm" id="genCopy">Kopyala</button>
+              <button class="btn ghost sm" id="genCsv">CSV indir</button>
+              <button class="btn ghost sm" id="genPrint">🖨️ Kod kartlarını yazdır</button>
+            </div>
+          </div>
+        </div>
+        <div class="section-title">Kodlar</div>
+        <div class="actions" style="margin-bottom:10px">
+          <select class="input" id="fStatus" style="width:auto"><option value="">Tüm durumlar</option><option value="new">Kullanılmamış</option><option value="used">Kullanılmış</option><option value="void">İptal</option></select>
+          <input class="input" id="fBatch" placeholder="Kod ya da parti ara" style="width:220px">
+          <button class="btn ghost sm" id="codesCsv">Listeyi CSV indir</button>
+        </div>
+        <div class="tablewrap"><table class="list" id="codes"></table></div>
+      </section>
+
+      <!-- ETKİNLİKLER -->
+      <section data-tab="etkinlikler" class="hidden">
+        <div class="actions" style="margin-bottom:10px;justify-content:space-between">
+          <input class="input" id="fEvent" placeholder="İsim ya da mekan ara" style="width:240px">
+          <button class="btn ghost sm" id="cleanup">🧹 Süresi dolanları sil</button>
+        </div>
+        <div class="tablewrap"><table class="list" id="events"></table></div>
+      </section>
+
+      <!-- FİRMALAR -->
+      <section data-tab="firmalar" class="hidden">
+        <div id="firmBox">
+          <div class="section-title" style="margin-top:0">Firma ekle</div>
+          <form class="card formgrid" id="firmForm">
+            <div><label class="field">Marka</label><select class="input" name="brand" required></select></div>
+            <div><label class="field">Firma adı</label><input class="input" name="fname" required maxlength="80"></div>
+            <div><label class="field">Tür</label><select class="input" name="kind"><option value="salon">Salon</option><option value="bayi">Bayi</option><option value="organizasyon">Organizasyon</option><option value="diger">Diğer</option></select></div>
+            <div><label class="field">Şehir</label><input class="input" name="city" maxlength="40"></div>
+            <div><label class="field">Telefon</label><input class="input" name="phone" maxlength="30"></div>
+            <div><label class="field">E-posta</label><input class="input" name="email" type="email" maxlength="80"></div>
+            <div><label class="field">Depolama</label><select class="input" name="storage"><option value="managed">Bizde (standart)</option><option value="own">Kendi hesabı (kurumsal)</option></select></div>
+            <div><button class="btn primary" type="submit">Ekle</button></div>
+          </form>
+          <div class="err" id="firmErr"></div>
+        </div>
+        <div class="section-title">Firmalar</div>
+        <div class="tablewrap"><table class="list" id="firms"></table></div>
+      </section>
+
+      <!-- MARKALAR -->
+      <section data-tab="markalar" class="hidden">
+        <div id="brandBox">
+          <div class="section-title" style="margin-top:0" id="brandFormTitle">Marka ekle</div>
+          <form class="card formgrid" id="brandForm">
+            <input type="hidden" name="bid">
+            <div><label class="field">Marka adı</label><input class="input" name="bname" required maxlength="60"></div>
+            <div><label class="field">Kod öneki (2–4 harf)</label><input class="input mono" name="prefix" required pattern="[A-Za-z]{2,4}" maxlength="4" style="text-transform:uppercase"></div>
+            <div><label class="field">Renk</label><input class="input" name="color" type="color" value="#e2552d" style="height:50px;padding:4px"></div>
+            <div><label class="field">Logo adresi (URL)</label><input class="input" name="logo" type="url" placeholder="https://.../logo.png"></div>
+            <div><label class="field">Alan adı</label><input class="input" name="domain" placeholder="latife.com.tr"></div>
+            <div><label class="field">Alt başlık</label><input class="input" name="tagline" maxlength="40" placeholder="Anı Kamerası"></div>
+            <div class="actions"><button class="btn primary sm" type="submit">Kaydet</button><button class="btn ghost sm" type="reset" id="brandReset">Temizle</button></div>
+          </form>
+          <div class="err" id="brandErr"></div>
+        </div>
+        <div class="section-title">Markalar</div>
+        <div class="tablewrap"><table class="list" id="brands"></table></div>
+      </section>
+
+      <!-- KULLANICILAR -->
+      <section data-tab="kullanicilar" class="hidden">
+        <div class="section-title" style="margin-top:0">Yetki ver</div>
+        <p class="small muted" style="margin-bottom:10px">Önce kişiyi Supabase → Authentication → Users → “Add user” ile ekleyin, sonra burada yetkisini seçin.</p>
+        <form class="card formgrid" id="userForm">
+          <div><label class="field">E-posta</label><input class="input" name="email" type="email" required></div>
+          <div><label class="field">Yetki</label><select class="input" name="urole"><option value="firm">Firma (salon/bayi)</option><option value="brand">Marka yöneticisi</option><option value="super">Tam yetki</option></select></div>
+          <div><label class="field">Marka</label><select class="input" name="brand"></select></div>
+          <div><label class="field">Firma</label><select class="input" name="firm"></select></div>
+          <div><button class="btn primary" type="submit">Kaydet</button></div>
+        </form>
+        <div class="err" id="userErr"></div>
+        <div class="section-title">Panel kullanıcıları</div>
+        <div class="tablewrap"><table class="list" id="users"></table></div>
+      </section>
+    </main>
+  </div>
+</div>
+<script>
+(async function () {
+  const { $, $$, esc, sb } = App;
+  if (!sb) return;
+  let me = null, brands = [], firms = [], packages = [], lastCodes = [];
+
+  const brandName = (id) => (brands.find((b) => b.id === id) || {}).name || "–";
+  const firmName = (id) => (firms.find((f) => f.id === id) || {}).name || "–";
+  const q = async (p) => { const { data, error } = await p; if (error) throw new Error(error.message); return data; };
+  const opts = (arr, sel, empty) => (empty ? `<option value="">${empty}</option>` : "") + arr.map((x) => `<option value="${x.id}"${x.id === sel ? " selected" : ""}>${esc(x.name)}</option>`).join("");
+  const statusPill = { new: '<span class="pill ok">Kullanılmamış</span>', used: '<span class="pill">Kullanıldı</span>', void: '<span class="pill off">İptal</span>' };
+
+  // ---------- oturum ----------
+  App.loadSiteBrand();
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) start(session); else $("#login").classList.remove("hidden");
+  $("#loginForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#loginErr"), "");
+    const { data, error } = await sb.auth.signInWithPassword({ email: e.target.email.value, password: e.target.password.value });
+    if (error) return App.showError($("#loginErr"), "E-posta ya da şifre hatalı.");
+    start(data.session);
+  };
+  $("#logout").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+  async function start(session) {
+    me = (await q(sb.from("ak_profiles").select("*").eq("user_id", session.user.id)))[0];
+    if (!me) { $("#login").classList.remove("hidden"); return App.showError($("#loginErr"), "Bu hesaba panel yetkisi verilmemiş. Yöneticinize başvurun."); }
+    $("#login").classList.add("hidden"); $("#shell").classList.remove("hidden"); $("#logout").classList.remove("hidden");
+    $("#who").textContent = session.user.email + " · " + { super: "Tam yetki", brand: "Marka yöneticisi", firm: "Firma" }[me.role];
+    const tabs = [["ozet", "Özet"], ["kodlar", "Kodlar"], ["etkinlikler", "Etkinlikler"]];
+    if (me.role !== "firm") tabs.push(["firmalar", "Firmalar"]);
+    tabs.push(["markalar", "Markalar"]);
+    if (me.role === "super") tabs.push(["kullanicilar", "Kullanıcılar"]);
+    $("#tabs").innerHTML = tabs.map(([k, l]) => `<button data-go="${k}">${l}</button>`).join("");
+    $("#tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.go); };
+    if (me.role === "firm") { $("#genBox").classList.add("hidden"); $("#cleanup").classList.add("hidden"); }
+    if (me.role !== "super") { $("#brandBox").classList.add("hidden"); }
+    await loadRefs();
+    if (brands.length === 1) App.applyBrand(brands[0]);
+    go(location.hash.slice(1) || "ozet");
+  }
+  async function loadRefs() {
+    [brands, firms, packages] = await Promise.all([
+      q(sb.from("ak_brands").select("*").order("created_at")),
+      q(sb.from("ak_firms").select("*").order("name")),
+      q(sb.from("ak_packages").select("*").order("sort")),
+    ]);
+    const adminBrands = me.role === "super" ? brands : brands.filter((b) => b.id === me.brand_id);
+    $("#genForm").brand.innerHTML = opts(adminBrands); $("#firmForm").brand.innerHTML = opts(adminBrands);
+    $("#genForm").package.innerHTML = packages.map((p) => `<option value="${p.id}">${esc(p.name)} · ${p.photo_limit ? p.photo_limit + " poz" : "sınırsız"} · ${p.retention_days} gün</option>`).join("");
+    syncGenFirms();
+    $("#userForm").brand.innerHTML = opts(brands, null, "–"); $("#userForm").firm.innerHTML = opts(firms, null, "–");
+  }
+  function syncGenFirms() { const b = $("#genForm").brand.value; $("#genForm").firm.innerHTML = opts(firms.filter((f) => f.brand_id === b), null, "Firma yok (doğrudan satış)"); }
+  $("#genForm").brand.onchange = syncGenFirms;
+
+  function go(tab) {
+    if (!$(`#tabs [data-go="${tab}"]`)) tab = "ozet";
+    $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.go === tab));
+    $$("section[data-tab]").forEach((s) => s.classList.toggle("hidden", s.dataset.tab !== tab));
+    try { history.replaceState(null, "", "#" + tab); } catch (e) {}
+    ({ ozet: loadSummary, kodlar: loadCodes, etkinlikler: loadEvents, firmalar: loadFirms, markalar: loadBrands, kullanicilar: loadUsers }[tab])().catch((e) => App.toast(e.message));
+  }
+
+  // ---------- özet ----------
+  async function loadSummary() {
+    const cnt = async (t, f) => { let r = sb.from(t).select("*", { count: "exact", head: true }); if (f) r = f(r); const { count, error } = await r; if (error) throw error; return count; };
+    const [ev, nw, us, stats] = await Promise.all([cnt("ak_events"), cnt("ak_activation_codes", (r) => r.eq("status", "new")), cnt("ak_activation_codes", (r) => r.eq("status", "used")), q(sb.from("ak_event_stats").select("photos"))]);
+    $("#kEvents").textContent = ev; $("#kNew").textContent = nw; $("#kUsed").textContent = us;
+    $("#kPhotos").textContent = stats.reduce((s, x) => s + Number(x.photos), 0);
+    const from = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const rows = await q(sb.from("ak_events").select("*").gte("event_date", from).order("event_date").limit(15));
+    $("#recent").innerHTML = rows.length ? `<tr><th>Tarih</th><th>Etkinlik</th><th>Marka</th><th>Firma</th></tr>` + rows.map((e) => `<tr><td>${App.fmtDate(e.event_date)}</td><td><b>${esc(App.couple(e))}</b><div class="small muted">${esc(e.event_type)}${e.venue ? " · " + esc(e.venue) : ""}</div></td><td>${esc(brandName(e.brand_id))}</td><td>${esc(firmName(e.firm_id))}</td></tr>`).join("") : `<tr><td class="muted">Son 7 gün ve sonrası için etkinlik yok.</td></tr>`;
+  }
+
+  // ---------- kodlar ----------
+  $("#genForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#genErr"), ""); const f = e.target;
+    try {
+      const r = await App.rpc("ak_generate_codes", { p_brand: f.brand.value, p_package: f.package.value, p_count: +f.count.value, p_firm: f.firm.value || null, p_valid_days: +f.days.value, p_batch: f.batch.value });
+      lastCodes = r.codes;
+      $("#genTitle").textContent = `${lastCodes.length} kod üretildi · ${brandName(f.brand.value)} · ${f.package.selectedOptions[0].text.split(" ·")[0]}`;
+      $("#genCodes").textContent = lastCodes.join("\n"); $("#genOut").classList.remove("hidden"); loadCodes();
+    } catch (err) { App.showError($("#genErr"), err.message); }
+  };
+  $("#genCopy").onclick = () => App.copy(lastCodes.join("\n"));
+  $("#genCsv").onclick = () => App.downloadText("kodlar.csv", "kod;etkinlestirme_linki\n" + lastCodes.map((c) => c + ";" + App.base() + "?kod=" + c).join("\n"));
+  $("#genPrint").onclick = () => { App.storage.set("printCodes", lastCodes); window.open("kodkart.html", "_blank"); };
+
+  let codeRows = [];
+  async function loadCodes() {
+    let r = sb.from("ak_activation_codes").select("*").order("created_at", { ascending: false }).limit(1000);
+    if ($("#fStatus").value) r = r.eq("status", $("#fStatus").value);
+    const s = $("#fBatch").value.trim(); if (s) r = r.or(`code.ilike.%${s.replace(/[,()%]/g, "")}%,batch.ilike.%${s.replace(/[,()%]/g, "")}%`);
+    codeRows = await q(r);
+    const canVoid = me.role !== "firm";
+    $("#codes").innerHTML = `<tr><th>Kod</th><th>Marka</th><th>Paket</th><th>Firma</th><th>Parti</th><th>Durum</th><th>Son geçerlilik</th><th></th></tr>` +
+      (codeRows.map((c) => `<tr><td class="mono">${esc(c.code)}</td><td>${esc(brandName(c.brand_id))}</td><td>${esc(c.package_id)}</td><td>${esc(firmName(c.firm_id))}</td><td>${esc(c.batch || "–")}</td><td>${statusPill[c.status]}</td><td>${c.expires_at ? App.fmtDate(c.expires_at) : "–"}</td><td>${c.status === "new" && canVoid ? `<button class="btn ghost sm" data-void="${esc(c.code)}">İptal et</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Kod yok.</td></tr>`);
+  }
+  $("#fStatus").onchange = loadCodes; let tq; $("#fBatch").oninput = () => { clearTimeout(tq); tq = setTimeout(loadCodes, 350); };
+  $("#codes").onclick = async (e) => {
+    const b = e.target.closest("[data-void]"); if (!b || !confirm(b.dataset.void + " iptal edilsin mi? Bu kod artık kullanılamaz.")) return;
+    try { await q(sb.from("ak_activation_codes").update({ status: "void" }).eq("code", b.dataset.void).eq("status", "new")); loadCodes(); } catch (err) { App.toast(err.message); }
+  };
+  $("#codesCsv").onclick = () => App.downloadText("kod-listesi.csv", "kod;marka;paket;firma;parti;durum;son_gecerlilik\n" + codeRows.map((c) => [c.code, brandName(c.brand_id), c.package_id, firmName(c.firm_id), c.batch || "", c.status, c.expires_at ? c.expires_at.slice(0, 10) : ""].join(";")).join("\n"));
+
+  // ---------- etkinlikler ----------
+  let eventRows = [];
+  async function loadEvents() {
+    const [rows, stats] = await Promise.all([q(sb.from("ak_events").select("*").order("event_date", { ascending: false }).limit(500)), q(sb.from("ak_event_stats").select("*"))]);
+    const st = Object.fromEntries(stats.map((s) => [s.event_id, s]));
+    eventRows = rows.map((e) => ({ ...e, st: st[e.id] || { photos: 0, guests: 0 } }));
+    renderEvents();
+  }
+  function renderEvents() {
+    const s = $("#fEvent").value.trim().toLocaleLowerCase("tr");
+    const rows = eventRows.filter((e) => !s || [e.name_a, e.name_b, e.venue].join(" ").toLocaleLowerCase("tr").includes(s));
+    const now = new Date();
+    $("#events").innerHTML = `<tr><th>Tarih</th><th>Etkinlik</th><th>Marka / Firma</th><th>Foto</th><th>Durum</th><th></th></tr>` +
+      (rows.map((e) => {
+        const expired = new Date(e.expires_at) < now;
+        const pill = expired ? '<span class="pill warn">Süresi doldu</span>' : e.status === "active" ? '<span class="pill ok">Açık</span>' : '<span class="pill off">Kapalı</span>';
+        return `<tr><td>${App.fmtDate(e.event_date)}</td>
+          <td><b>${esc(App.couple(e))}</b><div class="small muted">${esc(e.event_type)} · ${esc(e.package_id)}${e.venue ? " · " + esc(e.venue) : ""}</div></td>
+          <td>${esc(brandName(e.brand_id))}<div class="small muted">${esc(firmName(e.firm_id))}</div></td>
+          <td>${e.st.photos}<div class="small muted">${e.st.guests} misafir</div></td>
+          <td>${pill}<div class="small muted">Silinme: ${App.fmtDate(e.expires_at)}</div></td>
+          <td><div class="actions">
+            <button class="btn ghost sm" data-act="guest" data-id="${e.id}">Misafir linki</button>
+            <a class="btn ghost sm" target="_blank" href="${App.albumLink(e.slug, e.album_key)}">Albüm</a>
+            <a class="btn ghost sm" target="_blank" href="${App.cardLink(e.slug)}">Kart</a>
+            <button class="btn ghost sm" data-act="toggle" data-id="${e.id}">${e.status === "active" ? "Kapat" : "Aç"}</button>
+            ${me.role !== "firm" ? `<button class="btn ghost sm" data-act="del" data-id="${e.id}">Sil</button>` : ""}
+          </div></td></tr>`;
+      }).join("") || `<tr><td colspan="6" class="muted">Etkinlik yok.</td></tr>`);
+  }
+  $("#fEvent").oninput = renderEvents;
+  $("#events").onclick = async (e) => {
+    const b = e.target.closest("[data-act]"); if (!b) return; const ev = eventRows.find((x) => x.id === b.dataset.id);
+    try {
+      if (b.dataset.act === "guest") App.copy(App.guestLink(ev.slug));
+      if (b.dataset.act === "toggle") { await q(sb.from("ak_events").update({ status: ev.status === "active" ? "closed" : "active" }).eq("id", ev.id)); loadEvents(); }
+      if (b.dataset.act === "del") { if (!confirm(App.couple(ev) + " etkinliği ve TÜM fotoğrafları kalıcı olarak silinsin mi?")) return; await deleteEvent(ev); App.toast("Silindi"); loadEvents(); }
+    } catch (err) { App.toast(err.message); }
+  };
+  async function deleteEvent(ev) {
+    const photos = await q(sb.from("ak_photos").select("storage_path").eq("event_id", ev.id));
+    const paths = photos.map((p) => p.storage_path);
+    for (let i = 0; i < paths.length; i += 100) {
+      const { error } = await sb.storage.from("ak-photos").remove(paths.slice(i, i + 100));
+      if (error) throw new Error("Dosyalar silinemedi: " + error.message);
+    }
+    await q(sb.from("ak_events").delete().eq("id", ev.id));
+  }
+  $("#cleanup").onclick = async () => {
+    const expired = await q(sb.from("ak_events").select("*").lt("expires_at", new Date().toISOString()));
+    if (!expired.length) return App.toast("Süresi dolan etkinlik yok.");
+    if (!confirm(expired.length + " etkinliğin süresi dolmuş. Bunlar ve fotoğrafları kalıcı olarak silinsin mi?")) return;
+    let n = 0; for (const ev of expired) { try { await deleteEvent(ev); n++; } catch (e) { App.toast(e.message); } }
+    App.toast(n + " etkinlik silindi"); loadEvents();
+  };
+
+  // ---------- firmalar ----------
+  async function loadFirms() {
+    firms = await q(sb.from("ak_firms").select("*").order("name")); syncGenFirms();
+    const used = await q(sb.from("ak_activation_codes").select("firm_id,status").not("firm_id", "is", null).limit(10000));
+    const c = {}; used.forEach((u) => { c[u.firm_id] = c[u.firm_id] || { new: 0, used: 0 }; if (u.status !== "void") c[u.firm_id][u.status]++; });
+    $("#firms").innerHTML = `<tr><th>Firma</th><th>Marka</th><th>Tür</th><th>İletişim</th><th>Kodlar</th><th>Depolama</th><th></th></tr>` +
+      (firms.map((f) => `<tr><td><b>${esc(f.name)}</b><div class="small muted">${esc(f.city || "")}</div></td><td>${esc(brandName(f.brand_id))}</td><td>${esc(f.kind)}</td>
+        <td class="small">${esc(f.phone || "")}<br>${esc(f.email || "")}</td><td>${(c[f.id] || { used: 0 }).used} kullanıldı<div class="small muted">${(c[f.id] || { new: 0 }).new} bekliyor</div></td>
+        <td>${f.storage_mode === "own" ? '<span class="pill warn">Kendi hesabı</span>' : '<span class="pill">Bizde</span>'}</td>
+        <td>${me.role !== "firm" ? `<button class="btn ghost sm" data-delfirm="${f.id}">Sil</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Henüz firma yok.</td></tr>`);
+  }
+  $("#firmForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#firmErr"), ""); const f = e.target;
+    try {
+      await q(sb.from("ak_firms").insert({ brand_id: f.brand.value, name: f.fname.value.trim(), kind: f.kind.value, city: f.city.value || null, phone: f.phone.value || null, email: f.email.value || null, storage_mode: f.storage.value }));
+      f.reset(); App.toast("Firma eklendi"); await loadFirms(); $("#userForm").firm.innerHTML = opts(firms, null, "–");
+    } catch (err) { App.showError($("#firmErr"), err.message); }
+  };
+  $("#firms").onclick = async (e) => {
+    const b = e.target.closest("[data-delfirm]"); if (!b || !confirm("Firma silinsin mi? Kodları ve etkinlikleri silinmez, sadece firma bağlantısı kalkar.")) return;
+    try { await q(sb.from("ak_firms").delete().eq("id", b.dataset.delfirm)); loadFirms(); } catch (err) { App.toast(err.message); }
+  };
+
+  // ---------- markalar ----------
+  async function loadBrands() {
+    brands = await q(sb.from("ak_brands").select("*").order("created_at"));
+    $("#brands").innerHTML = `<tr><th>Marka</th><th>Önek</th><th>Alan adı</th><th>Logo</th><th></th></tr>` +
+      brands.map((b) => `<tr><td><span class="swatch" style="background:${esc(b.primary_color)}"></span><b>${esc(b.name)}</b>${b.is_default ? ' <span class="pill">varsayılan</span>' : ""}<div class="small muted">${esc(b.tagline || "")}</div></td>
+        <td class="mono">${esc(b.code_prefix)}</td><td>${esc(b.domain || "–")}</td><td>${b.logo_url ? `<img src="${esc(b.logo_url)}" style="height:24px">` : "–"}</td>
+        <td>${me.role === "super" ? `<button class="btn ghost sm" data-editbrand="${b.id}">Düzenle</button>` : ""}</td></tr>`).join("");
+  }
+  $("#brands").onclick = (e) => {
+    const b = e.target.closest("[data-editbrand]"); if (!b) return; const x = brands.find((y) => y.id === b.dataset.editbrand); const f = $("#brandForm");
+    f.bid.value = x.id; f.bname.value = x.name; f.prefix.value = x.code_prefix; f.color.value = x.primary_color; f.logo.value = x.logo_url || ""; f.domain.value = x.domain || ""; f.tagline.value = x.tagline || "";
+    $("#brandFormTitle").textContent = "Markayı düzenle: " + x.name; window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  $("#brandReset").onclick = () => { $("#brandForm").bid.value = ""; $("#brandFormTitle").textContent = "Marka ekle"; };
+  $("#brandForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#brandErr"), ""); const f = e.target;
+    const row = { name: f.bname.value.trim(), code_prefix: f.prefix.value.toUpperCase(), primary_color: f.color.value, logo_url: f.logo.value || null,
+      domain: f.domain.value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") || null, tagline: f.tagline.value || null };
+    try {
+      if (f.bid.value) await q(sb.from("ak_brands").update(row).eq("id", f.bid.value)); else await q(sb.from("ak_brands").insert(row));
+      f.reset(); f.bid.value = ""; $("#brandFormTitle").textContent = "Marka ekle"; App.toast("Kaydedildi"); await loadBrands(); await loadRefs();
+    } catch (err) { App.showError($("#brandErr"), /duplicate|unique/i.test(err.message) ? "Bu önek ya da alan adı başka bir markada kullanılıyor." : err.message); }
+  };
+
+  // ---------- kullanıcılar ----------
+  async function loadUsers() {
+    const users = await App.rpc("ak_list_users");
+    const roles = { super: "Tam yetki", brand: "Marka yöneticisi", firm: "Firma" };
+    $("#users").innerHTML = `<tr><th>E-posta</th><th>Yetki</th><th>Marka</th><th>Firma</th></tr>` + users.map((u) => `<tr><td>${esc(u.email)}</td><td>${roles[u.role]}</td><td>${esc(u.brand || "–")}</td><td>${esc(u.firm || "–")}</td></tr>`).join("");
+  }
+  $("#userForm").onsubmit = async (e) => {
+    e.preventDefault(); App.showError($("#userErr"), ""); const f = e.target;
+    try { await App.rpc("ak_assign_role", { p_email: f.email.value, p_role: f.urole.value, p_brand: f.brand.value || null, p_firm: f.firm.value || null }); f.reset(); App.toast("Yetki verildi"); loadUsers(); }
+    catch (err) { App.showError($("#userErr"), err.message); }
+  };
+})();
+</script>
+</body>
+</html>

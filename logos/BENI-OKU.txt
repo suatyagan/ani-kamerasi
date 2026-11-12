@@ -1,0 +1,1 @@
+Marka logolarınızı (PNG/SVG) bu klasöre koyun. Panel → Markalar → Logo adresi: /logos/dosya-adi.png
