@@ -43,7 +43,7 @@
           <span class="counter" id="counter"></span>
         </div>
         <div class="finder">
-          <div class="hint" id="hint">Deklanşöre bastığınızda telefonunuzun kamerası açılır.<br><br>Çektiğiniz kare burada görünür.</div>
+          <div class="hint" id="hint">Deklanşöre bastığınızda telefonunuzun kamerası açılır.<br><br>Çektiğiniz kare burada görünür. Büyütmek için üstüne dokunun.</div>
           <img id="last" alt="" class="hidden">
           <i class="corner c1"></i><i class="corner c2"></i><i class="corner c3"></i><i class="corner c4"></i>
           <div class="flash" id="flash"></div>
@@ -76,6 +76,14 @@
       <div class="mine" id="finMine"></div>
     </section>
   </main>
+</div>
+
+<div class="viewer" id="viewer">
+  <div class="bar">
+    <span id="vCap"></span>
+    <span class="actions"><button id="vPrev" aria-label="Önceki">‹</button><button id="vNext" aria-label="Sonraki">›</button><button id="vClose">Kapat</button></span>
+  </div>
+  <img id="vImg" alt="">
 </div>
 <script>
 (async function () {
@@ -171,6 +179,19 @@
     if (ok && remaining !== null && remaining > 0 && remaining <= 3) App.toast(remaining === 1 ? "Son pozunuz kaldı, iyi seçin 📸" : `Son ${remaining} poz!`);
     else if (ok && !(remaining !== null && remaining <= 0)) App.toast(ev.revealed ? "Albüme eklendi ✨" : "Çekildi! Albümde açılacak 🎞️");
   }
+  // Kendi karelerini büyütüp bakma
+  let vList = [], vIdx = 0;
+  function vShow() { $("#vImg").src = vList[vIdx]; $("#vCap").textContent = `${vList.length - vIdx}. kare · ${vList.length} kare çektiniz`; }
+  function vOpen(src) { vList = [...$("#mine").querySelectorAll("img")].map((i) => i.src); vIdx = Math.max(0, vList.indexOf(src)); if (!vList.length) return; vShow(); $("#viewer").classList.add("on"); }
+  ["#mine", "#finMine"].forEach((id) => $(id).addEventListener("click", (e) => { if (e.target.tagName === "IMG") vOpen(e.target.src); }));
+  $("#last").addEventListener("click", () => vOpen($("#last").src));
+  $("#vClose").onclick = () => $("#viewer").classList.remove("on");
+  $("#vPrev").onclick = () => { if (vIdx < vList.length - 1) { vIdx++; vShow(); } };
+  $("#vNext").onclick = () => { if (vIdx > 0) { vIdx--; vShow(); } };
+  let sx = null;
+  $("#vImg").addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
+  $("#vImg").addEventListener("touchend", (e) => { if (sx === null) return; const d = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(d) > 50) (d > 0 ? $("#vPrev") : $("#vNext")).click(); });
+
   $("#camInput").onchange = (e) => { handle([...e.target.files]); e.target.value = ""; };
   $("#galInput").onchange = (e) => { handle([...e.target.files]); e.target.value = ""; };
 })();
