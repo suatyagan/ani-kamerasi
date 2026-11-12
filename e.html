@@ -63,6 +63,18 @@
       </div>
       <div class="note" id="revealNote"></div>
     </section>
+
+    <section id="finished" class="hidden">
+      <div class="card center" style="padding:28px 20px">
+        <div style="font-size:44px;line-height:1">🎞️</div>
+        <div class="serif" style="font-size:30px;margin-top:10px">Filminiz bitti!</div>
+        <p style="margin:10px 0 4px;line-height:1.5"><b id="finName"></b>, <span id="finCount"></span> karenizin hepsi <b id="finCouple"></b> çiftinin albümüne ulaştı.</p>
+        <p class="muted small" id="finReveal" style="line-height:1.5"></p>
+        <p style="margin-top:14px;line-height:1.5">Bu güzel geceye ortak olduğunuz için teşekkürler 💛<br><span class="muted small">Bu sayfayı artık kapatabilirsiniz.</span></p>
+      </div>
+      <div class="section-title" style="margin-top:22px">Çektiğiniz kareler</div>
+      <div class="mine" id="finMine"></div>
+    </section>
   </main>
 </div>
 <script>
@@ -119,6 +131,17 @@
     $("#counter").innerHTML = remaining === null ? "Sınırsız poz" : `<b>${remaining}</b> poz kaldı`;
     const off = remaining !== null && remaining <= 0;
     $("#shutter").classList.toggle("off", off || busy); $("#galBtn").classList.toggle("off", off || busy);
+    if (off && !busy) showFinished();
+  }
+  function showFinished() {
+    $("#finName").textContent = name;
+    $("#finCount").textContent = ev.photo_limit ? ev.photo_limit : "";
+    $("#finCouple").textContent = App.couple(ev);
+    $("#finReveal").textContent = ev.revealed ? "" : "Kareler " + App.fmtDateTime(ev.reveal_at) + "'da albümde açılacak.";
+    $("#finMine").innerHTML = $("#mine").innerHTML;
+    $("#welcome").classList.add("hidden"); $("#camera").classList.add("hidden");
+    $("#finished").classList.remove("hidden");
+    window.scrollTo(0, 0);
   }
 
   async function upload(file) {
@@ -145,7 +168,8 @@
       catch (e) { App.toast(e.message); break; }
     }
     $("#uploading").classList.add("hidden"); busy = false; renderCounter();
-    if (ok) App.toast(ev.revealed ? "Albüme eklendi ✨" : "Çekildi! Albümde açılacak 🎞️");
+    if (ok && remaining !== null && remaining > 0 && remaining <= 3) App.toast(remaining === 1 ? "Son pozunuz kaldı, iyi seçin 📸" : `Son ${remaining} poz!`);
+    else if (ok && !(remaining !== null && remaining <= 0)) App.toast(ev.revealed ? "Albüme eklendi ✨" : "Çekildi! Albümde açılacak 🎞️");
   }
   $("#camInput").onchange = (e) => { handle([...e.target.files]); e.target.value = ""; };
   $("#galInput").onchange = (e) => { handle([...e.target.files]); e.target.value = ""; };
