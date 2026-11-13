@@ -78,6 +78,16 @@
   </main>
 </div>
 
+<div id="qc" class="hidden" style="position:fixed;inset:0;z-index:70;background:rgba(10,8,8,.88);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div class="card center" style="max-width:380px;width:100%">
+    <img id="qcImg" alt="" style="width:100%;max-height:46vh;object-fit:contain;border-radius:12px;background:#000">
+    <div class="serif" id="qcTitle" style="font-size:26px;margin-top:14px"></div>
+    <p class="muted small" id="qcText" style="margin:6px 0 16px;line-height:1.5"></p>
+    <label class="btn primary" for="camInput" id="qcRetake" style="display:block">📸 Tekrar çek</label>
+    <button class="btn ghost" id="qcSend" style="display:block;width:100%;margin-top:10px">Yine de gönder</button>
+  </div>
+</div>
+
 <div class="viewer" id="viewer">
   <div class="bar">
     <span id="vCap"></span>
@@ -165,8 +175,26 @@
     const fl = $("#flash"); fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
   }
 
+  // Tek karede bulanık/karanlık uyarısı: poz harcanmadan tekrar çekme şansı
+  function askQuality(q) {
+    return new Promise((resolve) => {
+      $("#qcImg").src = q.url;
+      $("#qcTitle").textContent = q.dark ? "Bu kare çok karanlık çıktı 😕" : "Bu kare bulanık çıktı 😕";
+      $("#qcText").textContent = q.dark ? "Işığa biraz daha yaklaşıp tekrar deneyebilirsiniz. Pozunuz harcanmadı." : "Telefonu sabit tutup tekrar deneyebilirsiniz. Pozunuz harcanmadı.";
+      $("#qc").classList.remove("hidden");
+      const done = (v) => { $("#qc").classList.add("hidden"); URL.revokeObjectURL(q.url); $("#qcSend").onclick = null; $("#qcRetake").onclick = null; resolve(v); };
+      $("#qcSend").onclick = () => done(true);
+      $("#qcRetake").onclick = () => done(false);
+    });
+  }
+
   async function handle(files) {
     if (!files.length || busy) return;
+    if (files.length === 1) {
+      const q = await App.checkImage(files[0]);
+      if (q.blurry || q.dark) { if (!(await askQuality(q))) return; }
+      else URL.revokeObjectURL(q.url);
+    }
     busy = true; renderCounter(); let ok = 0;
     for (let i = 0; i < files.length; i++) {
       if (remaining !== null && remaining <= 0) { App.toast("Pozlarınız bitti 🎞️"); break; }

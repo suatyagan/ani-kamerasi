@@ -102,6 +102,31 @@
     img.src = url;
   });
 
+  // Bulanıklık / karanlık kontrolü (telefonda, yüklemeden önce)
+  App.checkImage = (file) => new Promise((res) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload = () => {
+      try {
+        const k = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(8, Math.round(img.naturalWidth * k)), h = Math.max(8, Math.round(img.naturalHeight * k));
+        const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d", { willReadFrequently: true });
+        x.drawImage(img, 0, 0, w, h); const d = x.getImageData(0, 0, w, h).data;
+        const g = new Float32Array(w * h); let sum = 0;
+        for (let i = 0, j = 0; i < d.length; i += 4, j++) { g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; sum += g[j]; }
+        const mean = sum / (w * h);
+        let n = 0, m = 0, m2 = 0;
+        for (let y = 1; y < h - 1; y++) for (let xx = 1; xx < w - 1; xx++) {
+          const i = y * w + xx; const L = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w];
+          n++; const dl = L - m; m += dl / n; m2 += dl * (L - m);
+        }
+        const sharp = n ? m2 / n : 999;
+        res({ url, blurry: sharp < 35 && mean >= 20, dark: mean < 20 });
+      } catch (e) { res({ url, blurry: false, dark: false }); }
+    };
+    img.onerror = () => res({ url, blurry: false, dark: false });
+    img.src = url;
+  });
+
   App.storage = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
