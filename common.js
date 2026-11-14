@@ -87,6 +87,28 @@
     }
     x.restore();
   };
+  // Otomatik ışık düzeltme: sarı salon ışığını nötrler, karanlığı açar, kontrastı toparlar (hafif)
+  App.enhancePixels = (d) => {
+    const n = d.length / 4, step = Math.max(1, Math.floor(n / 60000));
+    let sr = 0, sg = 0, sb = 0, cnt = 0;
+    for (let i = 0; i < d.length; i += 4 * step) { sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; cnt++; }
+    const mr = sr / cnt || 1, mg = sg / cnt || 1, mb = sb / cnt || 1, gray = (mr + mg + mb) / 3;
+    const gain = (m) => Math.min(1.25, Math.max(0.8, 1 + 0.6 * (gray / Math.max(m, 1) - 1)));
+    const gr = gain(mr), gg = gain(mg), gb = gain(mb);
+    const hist = new Uint32Array(256); let lsum = 0;
+    for (let i = 0; i < d.length; i += 4 * step) {
+      const l = Math.min(255, Math.round(0.299 * d[i] * gr + 0.587 * d[i + 1] * gg + 0.114 * d[i + 2] * gb)); hist[l]++; lsum += l;
+    }
+    let acc = 0, lo = 0, hi = 255; for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= cnt * 0.01) { lo = v; break; } }
+    acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= cnt * 0.01) { hi = v; break; } }
+    lo = Math.min(lo, 24); hi = Math.max(hi, 200); if (hi - lo < 60) { lo = 0; hi = 255; }
+    const mean = Math.max(0.02, (lsum / cnt - lo) / (hi - lo));
+    const gamma = mean < 0.4 ? Math.min(1, Math.max(0.62, Math.log(0.45) / Math.log(mean))) : 1;
+    const lut = (g) => { const t = new Uint8ClampedArray(256); for (let v = 0; v < 256; v++) { const x = Math.min(1, Math.max(0, (v * g - lo) / (hi - lo))); t[v] = Math.round(255 * Math.pow(x, gamma)); } return t; };
+    const Lr = lut(gr), Lg = lut(gg), Lb = lut(gb);
+    for (let i = 0; i < d.length; i += 4) { d[i] = Lr[d[i]]; d[i + 1] = Lg[d[i + 1]]; d[i + 2] = Lb[d[i + 2]]; }
+  };
+
   App.processImage = (file, opts = {}) => new Promise((res, rej) => {
     const url = URL.createObjectURL(file); const img = new Image();
     img.onload = () => {
@@ -94,6 +116,7 @@
       w = Math.round(w * k); h = Math.round(h * k);
       const c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d");
       x.drawImage(img, 0, 0, w, h);
+      if (opts.enhance) { try { const id = x.getImageData(0, 0, w, h); App.enhancePixels(id.data); x.putImageData(id, 0, 0); } catch (e) { /* düzeltme olmadan devam */ } }
       if (opts.film) App.filmFx(x, w, h, opts.stamp);
       URL.revokeObjectURL(url);
       c.toBlob((b) => (b ? res(b) : rej(new Error("Fotoğraf işlenemedi."))), "image/jpeg", 0.85);

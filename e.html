@@ -163,7 +163,7 @@
   }
 
   async function upload(file) {
-    const blob = await App.processImage(file, { film, stamp: App.stamp(ev.event_date) });
+    const blob = await App.processImage(file, { enhance: true, film, stamp: App.stamp(ev.event_date) });
     const r = await rpc("ak_reserve_photo", { p_slug: slug, p_token: token, p_guest_name: name });
     const { error } = await App.sb.storage.from("ak-photos").upload(r.path, blob, { contentType: "image/jpeg", upsert: false, cacheControl: "31536000" });
     if (error) throw new Error("Yükleme başarısız: " + error.message);
