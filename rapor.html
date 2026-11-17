@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Etkinlik raporu</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<style>
+  .rp-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:8px 0 18px}
+  .rp-big{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+  .rp-big .stat b{font-size:34px;font-family:'Instrument Serif',Georgia,serif;font-weight:400;line-height:1.05}
+  .rp-chart{width:100%;height:auto;display:block}
+  .rp-note{font-size:14px;line-height:1.55}
+  .rp-dist{display:flex;flex-direction:column;gap:10px}
+  .rp-dist .row{display:grid;grid-template-columns:150px 1fr 54px;gap:10px;align-items:center;font-size:14px}
+  .rp-dist .bar{height:14px;border-radius:7px;background:var(--accent)}
+  .rp-dist .track{background:var(--line);border-radius:7px;overflow:hidden}
+  @media (max-width:700px){.rp-big{grid-template-columns:repeat(2,1fr)}.rp-dist .row{grid-template-columns:110px 1fr 44px}}
+  @media print{.noprint{display:none!important}body{background:#fff}.app{max-width:none;padding:0}.card,.stat{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="app wide">
+  <div class="topbar">
+    <div class="brandmark"><span data-brand-logo><span class="dot"></span></span><span data-brand-name>Anı Kamerası</span> <span class="muted" style="font-weight:400">· Etkinlik raporu</span></div>
+    <div class="actions noprint"><a class="btn ghost sm" href="panel.html">Panele dön</a><button class="btn primary sm" id="printBtn">Yazdır / PDF</button></div>
+  </div>
+
+  <main id="msg" class="card hidden" style="margin-top:30px"></main>
+
+  <main id="report" class="hidden">
+    <div class="rp-head">
+      <div>
+        <div class="small muted" id="rType"></div>
+        <h1 class="serif" style="font-size:44px;line-height:1.05" id="rCouple"></h1>
+        <div class="muted" id="rMeta"></div>
+      </div>
+      <div class="small muted" id="rNow" style="text-align:right"></div>
+    </div>
+
+    <div class="rp-big">
+      <div class="stat"><b id="kPhotos">0</b><span>kare çekildi</span></div>
+      <div class="stat"><b id="kGuests">0</b><span>misafir katıldı</span></div>
+      <div class="stat"><b id="kAvg">0</b><span>misafir başına kare</span></div>
+      <div class="stat"><b id="kPeak">–</b><span>en yoğun yarım saat</span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="section-title" style="margin-top:0">Gece boyunca çekilen kareler</div>
+      <div id="chart"></div>
+      <div class="small muted" id="chartNote" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="section-title" style="margin-top:0">Misafirler kaç kare çekti?</div>
+      <div class="rp-dist" id="dist"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title" style="margin-top:0">Özet</div>
+      <p class="rp-note" id="summary"></p>
+    </div>
+    <p class="small muted" style="margin-top:14px">Rapor misafir adı içermez. Gizlenen kareler sayılmaz.</p>
+  </main>
+</div>
+<script>
+(async () => {
+  const { $, esc } = App; const sb = App.sb;
+  const show = (html) => { $("#msg").innerHTML = html; $("#msg").classList.remove("hidden"); };
+  $("#printBtn").onclick = () => window.print();
+  if (!sb) return show("Site ayarlanmamış.");
+  const id = new URLSearchParams(location.search).get("id");
+  if (!id) return show("Etkinlik seçilmedi. Paneldeki <b>Rapor</b> butonunu kullanın.");
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return show('Raporu görmek için önce <a href="panel.html">panele giriş</a> yapın.');
+
+  const q = async (p) => { const { data, error } = await p; if (error) throw new Error(error.message); return data; };
+  try {
+    const ev = (await q(sb.from("ak_events").select("*").eq("id", id)))[0];
+    if (!ev) return show("Etkinlik bulunamadı ya da bu hesabın görme yetkisi yok.");
+    try { const b = (await q(sb.from("ak_brands").select("*").eq("id", ev.brand_id)))[0]; App.applyBrand(b); } catch (e) { /* varsayılan */ }
+
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const part = await q(sb.from("ak_photos").select("guest_token,created_at").eq("event_id", id).eq("status", "ok").order("created_at").range(from, from + 999));
+      rows.push(...part); if (part.length < 1000) break;
+    }
+
+    $("#rType").textContent = ev.event_type + " · " + (ev.package_id === "premium" ? "Premium" : "Standart") + " paket";
+    $("#rCouple").textContent = App.couple(ev);
+    $("#rMeta").textContent = App.fmtDate(ev.event_date) + (ev.venue ? " · " + ev.venue : "");
+    $("#rNow").textContent = "Rapor tarihi: " + App.fmtDate(new Date().toISOString());
+
+    const total = rows.length;
+    const per = {}; rows.forEach((r) => (per[r.guest_token] = (per[r.guest_token] || 0) + 1));
+    const counts = Object.values(per); const guests = counts.length;
+    $("#kPhotos").textContent = total.toLocaleString("tr-TR");
+    $("#kGuests").textContent = guests.toLocaleString("tr-TR");
+    $("#kAvg").textContent = guests ? (total / guests).toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "0";
+
+    // Yarım saatlik dilimler (en yoğun 12 saatlik pencere)
+    const hhmm = (d) => d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    let peakText = "–";
+    if (total) {
+      const SL = 30 * 60 * 1000;
+      const ts = rows.map((r) => new Date(r.created_at).getTime());
+      const bucket = {}; ts.forEach((t) => { const k = Math.floor(t / SL); bucket[k] = (bucket[k] || 0) + 1; });
+      const keys = Object.keys(bucket).map(Number).sort((a, b) => a - b);
+      let best = keys[0]; keys.forEach((k) => { if (bucket[k] > bucket[best]) best = k; });
+      peakText = hhmm(new Date(best * SL)) + "–" + hhmm(new Date((best + 1) * SL));
+      // gece için pencere: en yoğun dilimin çevresinde, en fazla 24 dilim
+      let lo = Math.max(keys[0], best - 12), hi = Math.min(keys[keys.length - 1], lo + 23);
+      lo = Math.max(keys[0], hi - 23);
+      const outside = keys.filter((k) => k < lo || k > hi).reduce((s, k) => s + bucket[k], 0);
+      const series = []; for (let k = lo; k <= hi; k++) series.push({ k, v: bucket[k] || 0 });
+      const max = Math.max(...series.map((s) => s.v));
+      const W = 720, H = 220, P = { l: 34, r: 8, t: 12, b: 34 };
+      const bw = (W - P.l - P.r) / series.length;
+      const y = (v) => P.t + (H - P.t - P.b) * (1 - v / max);
+      const step = Math.max(1, Math.ceil(series.length / 8));
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#e2552d";
+      let svg = `<svg class="rp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Yarım saatlik dilimlerde çekilen kare sayısı">`;
+      [0, 0.5, 1].forEach((f) => { const v = Math.round(max * f); svg += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke="#e6ddd2" stroke-width="1"/><text x="${P.l - 6}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="#8a7f78">${v}</text>`; });
+      series.forEach((s, i) => {
+        const x = P.l + i * bw + 2, h = H - P.b - y(s.v);
+        svg += `<rect x="${x}" y="${y(s.v)}" width="${Math.max(1, bw - 4)}" height="${Math.max(0, h)}" rx="3" fill="${s.k === best ? accent : "#cdbfb2"}"><title>${hhmm(new Date(s.k * SL))}: ${s.v} kare</title></rect>`;
+        if (i % step === 0) svg += `<text x="${x + (bw - 4) / 2}" y="${H - P.b + 16}" font-size="11" text-anchor="middle" fill="#8a7f78">${hhmm(new Date(s.k * SL))}</text>`;
+      });
+      svg += `</svg>`;
+      $("#chart").innerHTML = svg;
+      $("#chartNote").textContent = "Her çubuk yarım saat. Renkli çubuk en yoğun dilim." + (outside ? ` Bu pencerenin dışında ${outside} kare daha çekildi.` : "");
+    } else {
+      $("#chart").innerHTML = '<p class="muted">Henüz kare yok.</p>';
+    }
+    $("#kPeak").textContent = peakText;
+
+    // Dağılım
+    const lim = ev.photo_limit;
+    const groups = lim
+      ? [["1–5 kare", (c) => c <= 5], ["6–12 kare", (c) => c >= 6 && c <= 12], [`13–${lim - 1} kare`, (c) => c >= 13 && c < lim], [`${lim} kare (filmi bitirdi)`, (c) => c >= lim]]
+      : [["1–5 kare", (c) => c <= 5], ["6–15 kare", (c) => c >= 6 && c <= 15], ["16–30 kare", (c) => c >= 16 && c <= 30], ["31+ kare", (c) => c > 30]];
+    const gmax = Math.max(1, ...groups.map(([, f]) => counts.filter(f).length));
+    $("#dist").innerHTML = groups.map(([label, f]) => {
+      const n = counts.filter(f).length;
+      return `<div class="row"><span>${esc(label)}</span><div class="track"><div class="bar" style="width:${(n / gmax) * 100}%"></div></div><b style="text-align:right">${n}</b></div>`;
+    }).join("");
+
+    const finished = lim ? counts.filter((c) => c >= lim).length : 0;
+    const parts = [];
+    if (total) {
+      parts.push(`${App.couple(ev)} düğününde <b>${guests} misafir</b> toplam <b>${total} kare</b> çekti; misafir başına ortalama ${(total / guests).toLocaleString("tr-TR", { maximumFractionDigits: 1 })} kare.`);
+      parts.push(`Çekimin en yoğun olduğu yarım saat ${peakText}.`);
+      if (lim) parts.push(`${finished} misafir ${lim} pozun hepsini kullandı.`);
+      parts.push(`Bu karelerin hepsi çiftin albümünde tek yerde; WhatsApp'la toplamak için ${guests} kişiye ayrı ayrı ulaşmak gerekirdi.`);
+    } else parts.push("Bu etkinlikte henüz kare çekilmedi.");
+    $("#summary").innerHTML = parts.join(" ");
+
+    $("#report").classList.remove("hidden");
+  } catch (e) { show("Rapor yüklenemedi: " + esc(e.message)); }
+})();
+</script>
+</body>
+</html>
